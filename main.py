@@ -1,44 +1,53 @@
 import pygame
 import random
 import os
+import sys
 
-# --- CONFIGURAÇÕES GERAIS ---
+# --- INICIALIZAÇÃO ---
 pygame.init()
+pygame.joystick.init()
 pygame.font.init()
 
-LARGURA_TELA = 1000  # Aumentei um pouco para caber os menus laterais
+# Detectar Joysticks conectados
+joysticks = [pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())]
+for j in joysticks:
+    j.init()
+
+# CONFIGURAÇÕES DE TELA
+LARGURA_TELA = 1000
 ALTURA_TELA = 750
 BLOCK_SIZE = 30
-PLAY_WIDTH = 300  # 10 * 30
-PLAY_HEIGHT = 600 # 20 * 30
+PLAY_WIDTH = 300
+PLAY_HEIGHT = 600
 
-# ARQUIVO DE SAVE
+# GLOBAIS DE SISTEMA
+FULLSCREEN = False
+VELOCIDADE_NIVEL = 3  # 1 a 5 estrelas
+FALL_SPEEDS = {1: 0.45, 2: 0.35, 3: 0.25, 4: 0.15, 5: 0.08}
 SCORE_FILE = "recordes_tetris.txt"
 
-# CORES (Neon / Cyberpunk)
+# CORES
 PRETO = (0, 0, 0)
 BRANCO = (255, 255, 255)
 CINZA = (30, 30, 30)
 CINZA_CLARO = (128, 128, 128)
 VERMELHO = (255, 0, 0)
-VERMELHO_ALERTA = (255, 0, 0, 100) # Com transparência
 VERDE_NEON = (57, 255, 20)
 AZUL_NEON = (0, 255, 255)
 AMARELO = (255, 255, 0)
-ROXO = (128, 0, 128)
-ROSA_CHOQUE = (255, 20, 147) # Para os corações
+ROSA_CHOQUE = (255, 20, 147)
 
 # FORMAS (S, Z, I, O, J, L, T)
-S = [['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']]
-Z = [['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']]
-I = [['..0..', '..0..', '..0..', '..0..', '.....'], ['.....', '0000.', '.....', '.....', '.....']]
-O = [['.....', '.....', '.00..', '.00..', '.....']]
-J = [['.....', '.0...', '.000.', '.....', '.....'], ['.....', '..00.', '..0..', '..0..', '.....'], ['.....', '.....', '.000.', '...0.', '.....'], ['.....', '..0..', '..0..', '.00..', '.....']]
-L = [['.....', '...0.', '.000.', '.....', '.....'], ['.....', '..0..', '..0..', '..00.', '.....'], ['.....', '.....', '.000.', '.0...', '.....'], ['.....', '.00..', '..0..', '..0..', '.....']]
-T = [['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']]
-
-FORMAS = [S, Z, I, O, J, L, T]
-CORES_FORMAS = [VERDE_NEON, VERMELHO, AZUL_NEON, AMARELO, (255, 165, 0), (0, 0, 255), ROXO]
+FORMAS = [
+    [['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], # S
+    [['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], # Z
+    [['..0..', '..0..', '..0..', '..0..', '.....'], ['.....', '0000.', '.....', '.....', '.....']], # I
+    [['.....', '.....', '.00..', '.00..', '.....']], # O
+    [['.....', '.0...', '.000.', '.....', '.....'], ['.....', '..00.', '..0..', '..0..', '.....'], ['.....', '.....', '.000.', '...0.', '.....'], ['.....', '..0..', '..0..', '.00..', '.....']], # J
+    [['.....', '...0.', '.000.', '.....', '.....'], ['.....', '..0..', '..0..', '..00.', '.....'], ['.....', '.....', '.000.', '.0...', '.....'], ['.....', '..0..', '..0..', '.00..', '.....']], # L
+    [['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']]  # T
+]
+CORES_FORMAS = [VERDE_NEON, VERMELHO, AZUL_NEON, AMARELO, (255, 165, 0), (0, 0, 255), (128, 0, 128)]
 
 # --- CLASSES ---
 
@@ -50,59 +59,25 @@ class Peca:
         self.color = CORES_FORMAS[FORMAS.index(shape)]
         self.rotation = 0
 
-class ItemMagico:
-    def __init__(self, play_x, play_y):
-        self.x = random.randint(0, 9) # Posição na grid (0 a 9)
-        self.y = -2 # Começa acima da tela
-        self.play_offset_x = play_x
-        self.play_offset_y = play_y
-        self.active = True
-        self.tipo = "coracao" # Pode expandir para outros tipos
-    
-    def move(self):
-        self.y += 0.1 # Cai mais devagar que as peças
-    
-    def draw(self, surface):
-        if self.active:
-            # Desenhar um coração simples
-            cx = self.play_offset_x + (self.x * BLOCK_SIZE) + BLOCK_SIZE//2
-            cy = self.play_offset_y + (int(self.y) * BLOCK_SIZE) + BLOCK_SIZE//2
-            
-            # Triangulo invertido + 2 circulos = coração
-            pygame.draw.circle(surface, ROSA_CHOQUE, (int(cx - 5), int(cy - 5)), 7)
-            pygame.draw.circle(surface, ROSA_CHOQUE, (int(cx + 5), int(cy - 5)), 7)
-            pygame.draw.polygon(surface, ROSA_CHOQUE, [(cx-10, cy-2), (cx+10, cy-2), (cx, cy+10)])
-
 class TetrisGame:
     def __init__(self, offset_x, player_id):
         self.offset_x = offset_x
-        self.offset_y = (ALTURA_TELA - PLAY_HEIGHT) // 2 + 20
+        self.offset_y = 80
         self.grid = [[(0,0,0) for _ in range(10)] for _ in range(20)]
         self.current_piece = self.get_shape()
         self.next_piece = self.get_shape()
         self.change_piece = False
         self.score = 0
-        self.game_over = False
-        self.player_id = player_id # 1 ou 2
-        
-        # Modo Mágico
-        self.magic_items = [] 
-        self.magic_mode = False
-
-        # Visual de Alerta
+        self.player_id = player_id
         self.is_flashing = False
-        self.flash_timer = 0
 
     def get_shape(self):
         return Peca(5, 0, random.choice(FORMAS))
 
     def create_grid(self, locked_pos={}):
         grid = [[(0,0,0) for _ in range(10)] for _ in range(20)]
-        for i in range(len(grid)):
-            for j in range(len(grid[i])):
-                if (j, i) in locked_pos:
-                    c = locked_pos[(j,i)]
-                    grid[i][j] = c
+        for (j, i), color in locked_pos.items():
+            if i >= 0: grid[i][j] = color
         return grid
 
     def valid_space(self, shape, grid):
@@ -111,525 +86,304 @@ class TetrisGame:
         formatted = self.convert_shape_format(shape)
         for pos in formatted:
             if pos not in accepted_pos:
-                if pos[1] > -1:
-                    return False
+                if pos[1] > -1: return False
         return True
 
     def convert_shape_format(self, shape):
         positions = []
         format = shape.shape[shape.rotation % len(shape.shape)]
         for i, line in enumerate(format):
-            row = list(line)
-            for j, column in enumerate(row):
+            for j, column in enumerate(list(line)):
                 if column == '0':
                     positions.append((shape.x + j - 2, shape.y + i - 4))
-        for i, pos in enumerate(positions):
-            positions[i] = (pos[0], pos[1])
         return positions
-    
-    def check_lost(self, positions):
-        for pos in positions:
-            x, y = pos
-            if y < 1:
-                return True
-        return False
-
-    def check_magic_collision(self):
-        # Verifica se a peça atual tocou num item magico
-        formatted = self.convert_shape_format(self.current_piece)
-        for item in self.magic_items:
-            if item.active:
-                # Se qualquer bloco da peça estiver na mesma coordenada (arredondada) do item
-                for pos in formatted:
-                    px, py = pos
-                    if px == item.x and py == int(item.y):
-                        item.active = False
-                        self.score += 50 # Bonus por pegar o coração
-                        return True
-        return False
 
     def clear_rows(self, grid, locked):
         inc = 0
         for i in range(len(grid)-1, -1, -1):
-            row = grid[i]
-            if (0,0,0) not in row:
+            if (0,0,0) not in grid[i]:
                 inc += 1
-                ind = i
-                for j in range(len(row)):
-                    try:
-                        del locked[(j,i)]
-                    except:
-                        continue
+                for j in range(len(grid[i])):
+                    if (j, i) in locked: del locked[(j, i)]
         if inc > 0:
             for key in sorted(list(locked), key=lambda x: x[1])[::-1]:
                 x, y = key
-                if y < ind:
-                    newKey = (x, y + inc)
-                    locked[newKey] = locked.pop(key)
-            self.score += inc * 10
+                if y < i:
+                    locked[(x, y + inc)] = locked.pop(key)
+        self.score += inc * 10
+        return inc
 
     def draw_window(self, surface, grid):
-        # Fundo do Grid
-        pygame.draw.rect(surface, (0,0,0), (self.offset_x, self.offset_y, PLAY_WIDTH, PLAY_HEIGHT))
-        
-        # Grid Blocks
+        pygame.draw.rect(surface, (10,10,10), (self.offset_x, self.offset_y, PLAY_WIDTH, PLAY_HEIGHT))
         for i in range(len(grid)):
             for j in range(len(grid[i])):
                 if grid[i][j] != (0,0,0):
                     pygame.draw.rect(surface, grid[i][j], (self.offset_x + j*BLOCK_SIZE, self.offset_y + i*BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 0)
-
-        # Borda
+        
+        # Alerta de perigo (Pisca borda se chegar no topo)
         color_border = BRANCO
-        if self.is_flashing:
-             # Efeito pisca-pisca
-            if (pygame.time.get_ticks() // 200) % 2 == 0:
-                color_border = VERMELHO
-                # Overlay Vermelho Transparente
-                s = pygame.Surface((PLAY_WIDTH, PLAY_HEIGHT), pygame.SRCALPHA)
-                s.fill((255, 0, 0, 50))
-                surface.blit(s, (self.offset_x, self.offset_y))
-        
-        pygame.draw.rect(surface, color_border, (self.offset_x, self.offset_y, PLAY_WIDTH, PLAY_HEIGHT), 2)
+        self.is_flashing = any(grid[i][j] != (0,0,0) for i in range(3) for j in range(10))
+        if self.is_flashing and (pygame.time.get_ticks() // 250) % 2 == 0:
+            color_border = VERMELHO
+        pygame.draw.rect(surface, color_border, (self.offset_x, self.offset_y, PLAY_WIDTH, PLAY_HEIGHT), 3)
 
-        # Linhas fracas
-        for i in range(len(grid)):
-            pygame.draw.line(surface, (20,20,20), (self.offset_x, self.offset_y + i*BLOCK_SIZE), (self.offset_x+PLAY_WIDTH, self.offset_y+ i*BLOCK_SIZE))
-            for j in range(len(grid[i])):
-                pygame.draw.line(surface, (20,20,20), (self.offset_x + j*BLOCK_SIZE, self.offset_y), (self.offset_x + j*BLOCK_SIZE, self.offset_y + PLAY_HEIGHT))
-        
-        # Score e Info
-        font = pygame.font.SysFont('comicsans', 30)
-        label = font.render(f'Score: {self.score}', 1, BRANCO)
-        surface.blit(label, (self.offset_x + 10, self.offset_y - 30))
-        
-        # Itens Mágicos
-        if self.magic_mode:
-            for item in self.magic_items:
-                item.draw(surface)
+# --- SISTEMA DE RECORDE ---
 
-        # Controles na tela
-        font_ctrl = pygame.font.SysFont('consolas', 14)
-        if self.player_id == 1:
-            ctrls = ["W: Girar", "A: Esq", "D: Dir", "S: Descer"]
-            for idx, txt in enumerate(ctrls):
-                l = font_ctrl.render(txt, 1, CINZA_CLARO)
-                surface.blit(l, (self.offset_x - 80, self.offset_y + 50 + idx*20))
-        else:
-            ctrls = ["Cima: Girar", "Esq: Esq", "Dir: Dir", "Baixo: Descer"]
-            for idx, txt in enumerate(ctrls):
-                l = font_ctrl.render(txt, 1, CINZA_CLARO)
-                surface.blit(l, (self.offset_x + PLAY_WIDTH + 10, self.offset_y + 50 + idx*20))
+def get_max_score():
+    if not os.path.exists(SCORE_FILE): return "0"
+    with open(SCORE_FILE, 'r') as f:
+        lines = f.readlines()
+        return lines[0].strip() if lines else "0"
 
+def update_score(nscore):
+    score = get_max_score()
+    with open(SCORE_FILE, 'w') as f:
+        if int(score) > nscore: f.write(str(score))
+        else: f.write(str(nscore))
 
-# --- FUNÇÕES DE SISTEMA ---
+# --- SISTEMA DE TELAS E ARTES ---
 
-def salvar_recorde(nome, pontuacao):
-    try:
-        if not os.path.exists(SCORE_FILE):
-            with open(SCORE_FILE, "w") as f: f.write("")
-        
-        with open(SCORE_FILE, "a") as f:
-            f.write(f"{nome},{pontuacao}\n")
-    except:
-        print("Erro ao salvar")
-
-def ler_recordes():
-    scores = []
-    if os.path.exists(SCORE_FILE):
-        with open(SCORE_FILE, "r") as f:
-            for line in f:
-                parts = line.strip().split(',')
-                if len(parts) == 2:
-                    scores.append((parts[0], int(parts[1])))
-    scores.sort(key=lambda x: x[1], reverse=True)
-    return scores[:5] # Retorna top 5
-
-def draw_text_middle(surface, text, size, color, y_offset=0):
-    font = pygame.font.SysFont("comicsans", size, bold=True)
+def draw_text(win, text, size, color, x, y, center=True):
+    font = pygame.font.SysFont("consolas", size, bold=True)
     label = font.render(text, 1, color)
-    surface.blit(label, (LARGURA_TELA/2 - label.get_width()/2, ALTURA_TELA/2 - label.get_height()/2 + y_offset))
+    if center: win.blit(label, (x - label.get_width()//2, y))
+    else: win.blit(label, (x, y))
 
-def input_nome(win, score):
-    # Tela para inserir 3 letras
-    nome = ""
-    run = True
-    font = pygame.font.SysFont("comicsans", 60)
-    
-    while run:
-        win.fill(PRETO)
-        draw_text_middle(win, "NOVO RECORDE!", 50, VERDE_NEON, -100)
-        draw_text_middle(win, f"Score: {score}", 40, BRANCO, -40)
-        draw_text_middle(win, "Digite suas iniciais (3 letras):", 30, CINZA_CLARO, 20)
-        
-        lbl_nome = font.render(nome + "_"*(3-len(nome)), 1, AMARELO)
-        win.blit(lbl_nome, (LARGURA_TELA/2 - lbl_nome.get_width()/2, ALTURA_TELA/2 + 80))
-        
+def menu_pausa(win):
+    pausado = True
+    while pausado:
+        pygame.draw.rect(win, PRETO, (300, 250, 400, 200))
+        pygame.draw.rect(win, AZUL_NEON, (300, 250, 400, 200), 2)
+        draw_text(win, "PAUSADO", 50, AMARELO, 500, 280)
+        draw_text(win, "Pressione P ou 'START' para Voltar", 20, BRANCO, 500, 360)
         pygame.display.update()
-        
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return "AAA"
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_RETURN:
-                    if len(nome) > 0: run = False
-                elif event.key == pygame.K_BACKSPACE:
-                    nome = nome[:-1]
-                else:
-                    if len(nome) < 3 and event.unicode.isalpha():
-                        nome += event.unicode.upper()
-    return nome
+            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_p: pausado = False
+            if event.type == pygame.JOYBUTTONDOWN: pausado = False
+
+def tela_abertura(win):
+    intro_art = [
+        "__  _  _  ____  _    _     __     _    ____ ",
+        "|  || || ||__  || |  | |   /  \   | |  |  _ \ ",
+        "|  || || |  / / | |  | |  / /\ \  | |  | |_) |",
+        "|__||_||_| /_/  |_|  |_| /_/  \_\ |_|  |____/ ",
+        "        4 W A L L L A B   G A M E S             "
+    ]
+    win.fill(PRETO)
+    for i, line in enumerate(intro_art):
+        draw_text(win, line, 20, VERDE_NEON, LARGURA_TELA//2, 200 + i*25)
+    pygame.display.update()
+    pygame.time.delay(2000)
+
+    win.fill(PRETO)
+    draw_text(win, "Jogo pra meu Amoooo", 50, ROSA_CHOQUE, LARGURA_TELA//2, 300)
+    draw_text(win, "APRESENTA", 20, BRANCO, LARGURA_TELA//2, 380)
+    pygame.display.update()
+    pygame.time.delay(1500)
+
+    esperando = True
+    while esperando:
+        win.fill(PRETO)
+        draw_text(win, "TETRIS ULTRA BATTLE", 70, AZUL_NEON, LARGURA_TELA//2, 250)
+        if (pygame.time.get_ticks() // 500) % 2 == 0:
+            draw_text(win, "PRESSIONE QUALQUER BOTAO", 30, AMARELO, LARGURA_TELA//2, 500)
+        pygame.display.update()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if event.type in [pygame.KEYDOWN, pygame.JOYBUTTONDOWN]: esperando = False
 
 def menu_controles(win):
     run = True
     while run:
         win.fill(PRETO)
-        draw_text_middle(win, "CONECTAR CONTROLES", 50, AZUL_NEON, -200)
+        draw_text(win, "CONFIGURAR CONTROLES", 50, AZUL_NEON, LARGURA_TELA//2, 80)
         
-        # Info P1
-        pygame.draw.rect(win, CINZA, (100, 200, 300, 300), 2)
-        font = pygame.font.SysFont('comicsans', 30)
-        win.blit(font.render("PLAYER 1", 1, BRANCO), (180, 220))
-        win.blit(font.render("Teclado (WASD)", 1, VERDE_NEON), (150, 270))
-        win.blit(font.render("Status: CONECTADO", 1, BRANCO), (150, 350))
+        # Player 1
+        pygame.draw.rect(win, CINZA, (100, 180, 350, 350), 2)
+        draw_text(win, "PLAYER 1", 30, AZUL_NEON, 275, 200)
+        draw_text(win, "TECLADO: WASD", 20, BRANCO, 275, 250)
+        draw_text(win, "Girar: W", 18, CINZA_CLARO, 275, 280)
+        p1_joy = "Joy: DESCONECTADO"
+        if pygame.joystick.get_count() > 0: p1_joy = f"Joy: OK ({pygame.joystick.Joystick(0).get_name()[:10]})"
+        draw_text(win, p1_joy, 18, VERDE_NEON, 275, 350)
 
-        # Info P2
-        pygame.draw.rect(win, CINZA, (600, 200, 300, 300), 2)
-        win.blit(font.render("PLAYER 2", 1, BRANCO), (680, 220))
-        win.blit(font.render("Teclado (Setas)", 1, VERDE_NEON), (650, 270))
-        win.blit(font.render("Status: AGUARDANDO...", 1, BRANCO), (630, 350))
-        win.blit(font.render("Pressione qualquer SETA", 1, CINZA_CLARO), (620, 390))
+        # Player 2
+        pygame.draw.rect(win, CINZA, (550, 180, 350, 350), 2)
+        draw_text(win, "PLAYER 2", 30, ROSA_CHOQUE, 725, 200)
+        draw_text(win, "TECLADO: SETAS", 20, BRANCO, 725, 250)
+        draw_text(win, "Girar: SETA CIMA", 18, CINZA_CLARO, 725, 280)
+        p2_joy = "Joy: DESCONECTADO"
+        if pygame.joystick.get_count() > 1: p2_joy = f"Joy: OK ({pygame.joystick.Joystick(1).get_name()[:10]})"
+        draw_text(win, p2_joy, 18, VERDE_NEON, 725, 350)
 
-        draw_text_middle(win, "Pressione ESPAÇO para confirmar e voltar", 30, AMARELO, 250)
-        
+        draw_text(win, "Pressione ESPAÇO ou BOTAO 'A' para voltar", 25, AMARELO, LARGURA_TELA//2, 600)
         pygame.display.update()
-        
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+            if (event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE) or event.type == pygame.JOYBUTTONDOWN:
                 run = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    run = False
-                if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT]:
-                     # Simulação de conexão visual
-                     pygame.draw.rect(win, PRETO, (620, 340, 250, 100))
-                     win.blit(font.render("Status: CONECTADO!", 1, AZUL_NEON), (630, 350))
-                     pygame.display.update()
-                     pygame.time.delay(500)
-                     run = False
+            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
 
-def menu_melhores(win):
-    run = True
-    scores = ler_recordes()
-    while run:
-        win.fill(PRETO)
-        draw_text_middle(win, "MELHORES JOGADORES", 60, OURO if 'OURO' in globals() else AMARELO, -200)
-        
-        y = -100
-        for idx, (nome, pontos) in enumerate(scores):
-            txt = f"{idx+1}. {nome}  -  {pontos}"
-            draw_text_middle(win, txt, 40, BRANCO, y)
-            y += 50
-            
-        draw_text_middle(win, "Pressione ESC para voltar", 30, CINZA_CLARO, 250)
-        pygame.display.update()
-        
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                run = False
-
-def pause_menu(win):
-    paused = True
-    while paused:
-        # Overlay escuro
-        s = pygame.Surface((LARGURA_TELA, ALTURA_TELA))
-        s.set_alpha(10)
-        s.fill(PRETO)
-        win.blit(s, (0,0))
-        
-        draw_text_middle(win, "PAUSADO", 80, BRANCO, -50)
-        draw_text_middle(win, "P - Voltar ao Jogo", 40, VERDE_NEON, 50)
-        draw_text_middle(win, "Q - Sair para Menu", 40, VERMELHO, 100)
-        pygame.display.update()
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return "quit"
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    paused = False
-                if event.key == pygame.K_q:
-                    return "menu"
-    return "resume"
-
-# --- GAME LOOP PRINCIPAL ---
-
-def game_loop(win, mode, magic=False):
-    # Setup
-    locked_positions_p1 = {}
-    locked_positions_p2 = {}
-    
-    offset_p1 = (LARGURA_TELA - PLAY_WIDTH) // 2 if mode == 1 else 50
-    offset_p2 = LARGURA_TELA - PLAY_WIDTH - 50
-    
-    game1 = TetrisGame(offset_p1, 1)
-    game2 = TetrisGame(offset_p2, 2) if mode == 2 else None
-    
-    if magic:
-        game1.magic_mode = True
-        if game2: game2.magic_mode = True
+def game_loop(win, mode):
+    global VELOCIDADE_NIVEL
+    locked_p1, locked_p2 = {}, {}
+    game1 = TetrisGame(50 if mode == 2 else 350, 1)
+    game2 = TetrisGame(650, 2) if mode == 2 else None
     
     clock = pygame.time.Clock()
-    start_ticks = pygame.time.get_ticks()
-    run = True
     fall_time = 0
-    fall_speed = 0.27
-    magic_timer = 0
-    
-    # Diferença de pontos para derrota (Knockout)
-    LIMIT_DIFF = 100 
-    WARN_DIFF = 30
+    fall_speed = FALL_SPEEDS[VELOCIDADE_NIVEL]
+    run = True
 
     while run:
-        grid_p1 = game1.create_grid(locked_positions_p1)
-        grid_p2 = game2.create_grid(locked_positions_p2) if mode == 2 else None
+        grid_p1 = game1.create_grid(locked_p1)
+        grid_p2 = game2.create_grid(locked_p2) if mode == 2 else None
         
-        dt = clock.tick()
-        fall_time += dt
-        magic_timer += dt
+        fall_time += clock.get_rawtime()
+        clock.tick()
 
-        # --- Modo Mágico (Spawn Itens) ---
-        if magic and magic_timer > 5000: # A cada 5 segundos
-            magic_timer = 0
-            game1.magic_items.append(ItemMagico(game1.offset_x, game1.offset_y))
-            if mode == 2:
-                game2.magic_items.append(ItemMagico(game2.offset_x, game2.offset_y))
-
-        # --- Queda Automática ---
         if fall_time/1000 > fall_speed:
             fall_time = 0
-            # P1
             game1.current_piece.y += 1
-            if not(game1.valid_space(game1.current_piece, grid_p1)) and game1.current_piece.y > 0:
+            if not game1.valid_space(game1.current_piece, grid_p1):
                 game1.current_piece.y -= 1
                 game1.change_piece = True
             
-            # P2
             if mode == 2:
                 game2.current_piece.y += 1
-                if not(game2.valid_space(game2.current_piece, grid_p2)) and game2.current_piece.y > 0:
+                if not game2.valid_space(game2.current_piece, grid_p2):
                     game2.current_piece.y -= 1
                     game2.change_piece = True
-            
-            # Move Itens Mágicos
-            if magic:
-                for item in game1.magic_items: item.move()
-                if mode == 2:
-                    for item in game2.magic_items: item.move()
 
-        # --- INPUTS ---
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                run = False
-                return
-
+            if event.type == pygame.QUIT: run = False
+            
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    acao = pause_menu(win)
-                    if acao == "menu": return
-                    if acao == "quit": 
-                        pygame.quit()
-                        quit()
-
-                # P1 (WASD)
+                if event.key == pygame.K_p: menu_pausa(win)
+                # Player 1 (WASD)
                 if event.key == pygame.K_a:
                     game1.current_piece.x -= 1
-                    if not(game1.valid_space(game1.current_piece, grid_p1)): game1.current_piece.x += 1
-                elif event.key == pygame.K_d:
+                    if not game1.valid_space(game1.current_piece, grid_p1): game1.current_piece.x += 1
+                if event.key == pygame.K_d:
                     game1.current_piece.x += 1
-                    if not(game1.valid_space(game1.current_piece, grid_p1)): game1.current_piece.x -= 1
-                elif event.key == pygame.K_s:
+                    if not game1.valid_space(game1.current_piece, grid_p1): game1.current_piece.x -= 1
+                if event.key == pygame.K_s:
                     game1.current_piece.y += 1
-                    if not(game1.valid_space(game1.current_piece, grid_p1)): game1.current_piece.y -= 1
-                elif event.key == pygame.K_w:
+                    if not game1.valid_space(game1.current_piece, grid_p1): game1.current_piece.y -= 1
+                if event.key == pygame.K_w:
                     game1.current_piece.rotation += 1
-                    if not(game1.valid_space(game1.current_piece, grid_p1)): game1.current_piece.rotation -= 1
-
-                # P2 (Setas)
+                    if not game1.valid_space(game1.current_piece, grid_p1): game1.current_piece.rotation -= 1
+                
+                # Player 2 (Setas)
                 if mode == 2:
                     if event.key == pygame.K_LEFT:
                         game2.current_piece.x -= 1
-                        if not(game2.valid_space(game2.current_piece, grid_p2)): game2.current_piece.x += 1
-                    elif event.key == pygame.K_RIGHT:
+                        if not game2.valid_space(game2.current_piece, grid_p2): game2.current_piece.x += 1
+                    if event.key == pygame.K_RIGHT:
                         game2.current_piece.x += 1
-                        if not(game2.valid_space(game2.current_piece, grid_p2)): game2.current_piece.x -= 1
-                    elif event.key == pygame.K_DOWN:
+                        if not game2.valid_space(game2.current_piece, grid_p2): game2.current_piece.x -= 1
+                    if event.key == pygame.K_DOWN:
                         game2.current_piece.y += 1
-                        if not(game2.valid_space(game2.current_piece, grid_p2)): game2.current_piece.y -= 1
-                    elif event.key == pygame.K_UP:
+                        if not game2.valid_space(game2.current_piece, grid_p2): game2.current_piece.y -= 1
+                    if event.key == pygame.K_UP:
                         game2.current_piece.rotation += 1
-                        if not(game2.valid_space(game2.current_piece, grid_p2)): game2.current_piece.rotation -= 1
-        
-        # --- ATUALIZAÇÃO DO GRID ---
-        shape_pos_p1 = game1.convert_shape_format(game1.current_piece)
-        for i in range(len(shape_pos_p1)):
-            x, y = shape_pos_p1[i]
-            if y > -1: grid_p1[y][x] = game1.current_piece.color
+                        if not game2.valid_space(game2.current_piece, grid_p2): game2.current_piece.rotation -= 1
 
-        if mode == 2:
-            shape_pos_p2 = game2.convert_shape_format(game2.current_piece)
-            for i in range(len(shape_pos_p2)):
-                x, y = shape_pos_p2[i]
-                if y > -1: grid_p2[y][x] = game2.current_piece.color
+            # JOYSTICK LOGIC
+            if event.type == pygame.JOYAXISMOTION:
+                target_game = game1 if event.joy == 0 else game2
+                target_grid = grid_p1 if event.joy == 0 else grid_p2
+                if target_game:
+                    if event.axis == 0: # Horizontal
+                        if event.value < -0.5: 
+                            target_game.current_piece.x -= 1
+                            if not target_game.valid_space(target_game.current_piece, target_grid): target_game.current_piece.x += 1
+                        elif event.value > 0.5:
+                            target_game.current_piece.x += 1
+                            if not target_game.valid_space(target_game.current_piece, target_grid): target_game.current_piece.x -= 1
+                    if event.axis == 1 and event.value > 0.5: # Baixo
+                        target_game.current_piece.y += 1
+                        if not target_game.valid_space(target_game.current_piece, target_grid): target_game.current_piece.y -= 1
 
-        # --- LÓGICA MÁGICA ---
-        if magic:
-            game1.check_magic_collision()
-            if mode == 2: game2.check_magic_collision()
+            if event.type == pygame.JOYBUTTONDOWN:
+                target_game = game1 if event.joy == 0 else game2
+                target_grid = grid_p1 if event.joy == 0 else grid_p2
+                if target_game:
+                    target_game.current_piece.rotation += 1
+                    if not target_game.valid_space(target_game.current_piece, target_grid): target_game.current_piece.rotation -= 1
 
-        # --- FINALIZAR JOGADA ---
+        # Lógica de Peças P1
         if game1.change_piece:
-            for pos in shape_pos_p1:
-                p = (pos[0], pos[1])
-                locked_positions_p1[p] = game1.current_piece.color
+            for pos in game1.convert_shape_format(game1.current_piece):
+                locked_p1[pos] = game1.current_piece.color
             game1.current_piece = game1.next_piece
             game1.next_piece = game1.get_shape()
             game1.change_piece = False
-            game1.clear_rows(grid_p1, locked_positions_p1)
-        
+            game1.clear_rows(grid_p1, locked_p1)
+            if not game1.valid_space(game1.current_piece, grid_p1): run = False
+
+        # Lógica de Peças P2
         if mode == 2 and game2.change_piece:
-            for pos in shape_pos_p2:
-                p = (pos[0], pos[1])
-                locked_positions_p2[p] = game2.current_piece.color
+            for pos in game2.convert_shape_format(game2.current_piece):
+                locked_p2[pos] = game2.current_piece.color
             game2.current_piece = game2.next_piece
             game2.next_piece = game2.get_shape()
             game2.change_piece = False
-            game2.clear_rows(grid_p2, locked_positions_p2)
+            game2.clear_rows(grid_p2, locked_p2)
+            if not game2.valid_space(game2.current_piece, grid_p2): run = False
 
-        # --- LÓGICA COMPETITIVA (VS) ---
-        perdedor = None
-        if mode == 2:
-            diff = game1.score - game2.score
-            
-            # Reset
-            game1.is_flashing = False
-            game2.is_flashing = False
-            
-            # P2 está ganhando muito
-            if diff < -WARN_DIFF: 
-                game1.is_flashing = True # P1 Perigo
-            # P1 está ganhando muito
-            if diff > WARN_DIFF: 
-                game2.is_flashing = True # P2 Perigo
-            
-            # Knockout
-            if diff < -LIMIT_DIFF: perdedor = "P1"
-            if diff > LIMIT_DIFF: perdedor = "P2"
-
-        # --- DESENHO ---
         win.fill(PRETO)
-        
-        seconds = (pygame.time.get_ticks() - start_ticks) // 1000
-        m, s = divmod(seconds, 60)
-        timer_text = f'{m:02d}:{s:02d}'
-        font_time = pygame.font.SysFont('consolas', 40, bold=True)
-        lbl_time = font_time.render(timer_text, 1, AMARELO)
-        win.blit(lbl_time, (LARGURA_TELA/2 - lbl_time.get_width()/2, 10))
-
         game1.draw_window(win, grid_p1)
-        if mode == 1:
-            draw_text_middle(win, "Player 1", 30, BRANCO, -340)
+        draw_text(win, f"Score: {game1.score}", 30, BRANCO, game1.offset_x + 150, 30)
         
         if mode == 2:
             game2.draw_window(win, grid_p2)
-            # HUD VS
-            f_vs = pygame.font.SysFont('comicsans', 20)
-            win.blit(f_vs.render(f"P1: {game1.score}", 1, AZUL_NEON), (50, 20))
-            win.blit(f_vs.render(f"P2: {game2.score}", 1, VERDE_NEON), (LARGURA_TELA - 150, 20))
-
-        pygame.display.update()
-
-        # --- GAME OVER CONDITIONS ---
-        msg_fim = ""
-        if perdedor:
-            msg_fim = f"KNOCKOUT! {perdedor} Perdeu feio!"
-            run = False
-        elif game1.check_lost(locked_positions_p1):
-            msg_fim = "P1 PERDEU (Topo)!"
-            run = False
-        elif mode == 2 and game2.check_lost(locked_positions_p2):
-            msg_fim = "P2 PERDEU (Topo)!"
-            run = False
+            draw_text(win, f"Score: {game2.score}", 30, BRANCO, game2.offset_x + 150, 30)
         
-        if not run:
-            draw_text_middle(win, msg_fim, 60, VERMELHO)
-            pygame.display.update()
-            pygame.time.delay(3000)
-            
-            # Salvar Scores
-            if mode == 1:
-                nome = input_nome(win, game1.score)
-                salvar_recorde(nome, game1.score)
-            elif mode == 2:
-                # Salva o vencedor
-                if game1.score > game2.score:
-                    nome = input_nome(win, game1.score)
-                    salvar_recorde(f"P1-{nome}", game1.score)
-                else:
-                    nome = input_nome(win, game2.score)
-                    salvar_recorde(f"P2-{nome}", game2.score)
+        pygame.display.update()
+    
+    update_score(game1.score)
 
 def main_menu(win):
+    global FULLSCREEN, VELOCIDADE_NIVEL
     run = True
     while run:
         win.fill(PRETO)
+        draw_text(win, "TETRIS ULTRA BATTLE", 60, AZUL_NEON, LARGURA_TELA//2, 80)
         
-        # Branding
-        font_brand = pygame.font.SysFont('arial', 15)
-        lbl_prod = font_brand.render("Produção: 4wallLab", 1, CINZA_CLARO)
-        lbl_dedic = font_brand.render("Jogo pra meu Amoooo", 1, ROSA_CHOQUE)
-        win.blit(lbl_prod, (10, ALTURA_TELA - 30))
-        win.blit(lbl_dedic, (LARGURA_TELA - 180, ALTURA_TELA - 30))
-
-        # Título
-        draw_text_middle(win, "TETRIS ULTRA", 80, AZUL_NEON, -150)
-        
-        # Opções
-        opts = [
-            "1 - Single Player",
-            "2 - VS Mode (Normal)",
-            "3 - VS Dinâmico Mágico (Corações)",
-            "4 - Conectar Controles",
-            "5 - Ver Melhores (Salvos)",
-            "Q - Sair"
+        opcoes = [
+            "1 - MODO SOLO",
+            "2 - MODO VS (MULTIJOGADOR)",
+            f"V - VELOCIDADE: {'★' * VELOCIDADE_NIVEL}{'☆' * (5-VELOCIDADE_NIVEL)}",
+            "F - TELA CHEIA (ON/OFF)",
+            "C - CONFIGURAR CONTROLES",
+            "ESC - SAIR"
         ]
         
-        start_y = 0
-        for opt in opts:
-            color = BRANCO
-            if "Mágico" in opt: color = ROSA_CHOQUE
-            draw_text_middle(win, opt, 30, color, start_y)
-            start_y += 40
-        
-        pygame.display.update()
-        
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                run = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_1:
-                    game_loop(win, mode=1, magic=False)
-                if event.key == pygame.K_2:
-                    game_loop(win, mode=2, magic=False)
-                if event.key == pygame.K_3:
-                    game_loop(win, mode=2, magic=True)
-                if event.key == pygame.K_4:
-                    menu_controles(win)
-                if event.key == pygame.K_5:
-                    menu_melhores(win)
-                if event.key == pygame.K_q:
-                    run = False
-    pygame.quit()
+        for i, texto in enumerate(opcoes):
+            cor = AMARELO if texto.startswith("V") else BRANCO
+            draw_text(win, texto, 30, cor, LARGURA_TELA//2, 220 + i*60)
 
+        max_s = get_max_score()
+        draw_text(win, f"RECORDE ATUAL: {max_s}", 20, VERDE_NEON, LARGURA_TELA//2, 650)
+        draw_text(win, "4wallLab Studio - 2026", 15, CINZA_CLARO, LARGURA_TELA//2, 710)
+        pygame.display.update()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1: game_loop(win, 1)
+                if event.key == pygame.K_2: game_loop(win, 2)
+                if event.key == pygame.K_c: menu_controles(win)
+                if event.key == pygame.K_v:
+                    VELOCIDADE_NIVEL = VELOCIDADE_NIVEL + 1 if VELOCIDADE_NIVEL < 5 else 1
+                if event.key == pygame.K_f:
+                    FULLSCREEN = not FULLSCREEN
+                    win = pygame.display.set_mode((LARGURA_TELA, ALTURA_TELA), pygame.FULLSCREEN if FULLSCREEN else 0)
+                if event.key == pygame.K_ESCAPE: pygame.quit(); sys.exit()
+
+# EXECUÇÃO
 win = pygame.display.set_mode((LARGURA_TELA, ALTURA_TELA))
-pygame.display.set_caption("Tetris Battle - 4wallLab")
+pygame.display.set_caption("TETRIS ULTRA BATTLE - 4wallLab")
+tela_abertura(win)
 main_menu(win)
